@@ -13,7 +13,7 @@
 * Copyright yelloxing
 * Released under the MIT license
 * 
-* Date:Thu Dec 06 2018 09:35:38 GMT+0800 (GMT+08:00)
+* Date:Thu Dec 06 2018 20:14:14 GMT+0800 (GMT+08:00)
 */
 (function (global, factory) {
 
@@ -458,11 +458,18 @@ clay.prototype.position = function (event) {
 };
 
 // 判断浏览器类型
-var _browser = function () {
+var _browser = (function () {
 
     var userAgent = window.navigator.userAgent;
     if (userAgent.indexOf("Opera") > -1 || userAgent.indexOf("OPR") > -1) {
         return "Opera";
+    }
+    if ((userAgent.indexOf("compatible") > -1 && userAgent.indexOf("MSIE") > -1) ||
+        (userAgent.indexOf("Trident") > -1 && userAgent.indexOf("rv:11.0") > -1)) {
+        return "IE";
+    }
+    if (userAgent.indexOf("Edge") > -1) {
+        return "Edge";
     }
     if (userAgent.indexOf("Firefox") > -1) {
         return "Firefox";
@@ -473,22 +480,15 @@ var _browser = function () {
     if (userAgent.indexOf("Safari") > -1) {
         return "Safari";
     }
-    if ((userAgent.indexOf("compatible") > -1 && userAgent.indexOf("MSIE") > -1) ||
-        (userAgent.indexOf("Trident") > -1 && userAgent.indexOf("rv:11.0") > -1)) {
-        return "IE";
-    }
-    if (userAgent.indexOf("Edge") > -1) {
-        return "Edge";
-    }
     return -1;
 
-};
+})();
 
 // 判断IE浏览器版本
-var _IE = function () {
+var _IE = (function () {
 
     // 如果不是IE浏览器直接返回
-    if (_browser() != 'IE') return -1;
+    if (_browser != 'IE') return -1;
 
     var userAgent = window.navigator.userAgent;
     if (userAgent.indexOf("Trident") > -1 && userAgent.indexOf("rv:11.0") > -1) return 11;
@@ -500,20 +500,19 @@ var _IE = function () {
 
     // IE版本小于7
     return 6;
-};
+})();
 
 // 针对不支持的浏览器给出提示
-if (_IE() < 9 && _browser() == 'IE') throw new Error('IE browser version is too low, minimum version IE9!');
+if (_IE < 9 && _browser == 'IE') throw new Error('IE browser version is too low, minimum support IE9!');
 
 // 针对IE浏览器进行加强
-if (_IE() >= 9) {
+if (_IE >= 9) {
     var _innerHTML = {
         get: function () {
-            var frame = document.createElement("div"),
-                childNode = this.firstChild;
-            while (childNode) {
-                frame.appendChild(childNode);
-                childNode = childNode.nextSibling;
+            var frame = document.createElement("div"), i;
+            for (i = 0; i < this.childNodes.length; i++) {
+                // 深度克隆，克隆节点以及节点下面的子内容
+                frame.appendChild(this.childNodes[i].cloneNode(true));
             }
             return frame.innerHTML;
         },
@@ -1695,6 +1694,17 @@ clay.svg.text = function () {
         function (
             x, y, text, deg, horizontal, vertical, color, fontSize
         ) {
+
+            // 针对IE和edge特殊计算
+            if (_browser == 'IE' || _browser == 'Edge') {
+                if (vertical == "top") {
+                    y += fontSize;
+                }
+                if (vertical == "middle") {
+                    y += fontSize * 0.5;
+                }
+            }
+
             var rotate = !deg ? "" : "transform='rotate(" + deg + "," + x + "," + y + ")'";
             return clay('<text fill=' + color + ' x="' + x + '" y="' + y + '" ' + rotate + '>' + text + '</text>').css({
                 // 文本水平
@@ -1705,8 +1715,15 @@ clay.svg.text = function () {
                 // 本垂直
                 "dominant-baseline": {
                     "top": "text-before-edge",
-                    "bottom": "text-after-edge"
-                }[vertical] || "middle",
+                    "bottom": {
+                        "Safari": "auto"
+                    }[_browser] ||
+                        "ideographic"
+                }[vertical] ||
+                    {
+                        "Firefox": "middle"
+                    }[_browser] ||
+                    "central",
                 "font-size": fontSize + "px",
                 "font-family": "sans-serif"
             });
@@ -1722,6 +1739,7 @@ clay.canvas.text = function (selector, config) {
             _canvas(selector, config, _text, function (
                 x, y, text, deg, horizontal, vertical, color, fontSize
             ) {
+
                 obj._p.save();
                 obj._p.beginPath();
                 obj._p.textAlign = {
@@ -2189,6 +2207,10 @@ clay.pieLayout = function () {
     };
 
     return pie;
+};
+
+clay.component = function (key, valArr) {
+
 };
 
     clay.version = '1.4.0';
