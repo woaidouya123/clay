@@ -44,6 +44,7 @@ var source = [
      */
     './src/calculate/interpolate/Hermite.js',
     './src/calculate/interpolate/Cardinal.js',
+    './src/calculate/interpolate/catmull-rom.js',
     './src/calculate/map.js',
     './src/calculate/transform.js',
 
@@ -56,6 +57,7 @@ var source = [
     './src/graphics/line.js',
     './src/graphics/text.js',
     './src/graphics/bezier.js',
+    './src/graphics/polygon.js',
 
     /**
      * 布局
@@ -66,7 +68,9 @@ var source = [
     /**
      * 扩展
      */
-    './src/_extend/component.js'
+    './src/_extend/_compiler.js',
+    './src/_extend/component.js',
+    './src/_extend/config.js'
 
 ];
 
