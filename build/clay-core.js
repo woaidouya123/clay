@@ -1,28 +1,28 @@
 /*!
-* 文件状态：本版本为开发中的未来版本
-*
-* clay.js - Provide more flexible data visualization solutions!
-* git+https://github.com/yelloxing/clay.git
+* clay-core - Provide more flexible data visualization solutions!
+* git+https://github.com/yelloxing/clay-core.git
 * 
 * author 心叶
 *
-* version 1.4.0
+* version 1.5.2next
 * 
 * build Sun Jul 29 2018
 *
 * Copyright yelloxing
 * Released under the MIT license
 * 
-* Date:Mon Dec 10 2018 09:36:51 GMT+0800 (GMT+08:00)
+* Date:Fri Dec 14 2018 16:44:03 GMT+0800 (GMT+08:00)
 */
 (function (global, factory) {
 
     'use strict';
 
     if (typeof module === "object" && typeof module.exports === "object") {
-        module.exports = factory(global);
+        module.exports = function (target) {
+            return factory(target || window);
+        };
     } else {
-        factory(global);
+        global.clay = global.$$ = factory(global);
     }
 
 })(typeof window !== "undefined" ? window : this, function (global, undefined) {
@@ -68,11 +68,21 @@ var _regexp = {
 // 记录需要使用xlink命名空间常见的xml属性
 var _xlink = ["href", "title", "show", "type", "role", "actuate"];
 
+// 嵌入内部提供者
+var _provider = {};
+
+// 用于扩展或加强选择器
+var _out_sizzle;
+_provider.$sizzleProvider = function (config) {
+    _out_sizzle = config;
+};
+
 // 负责查找结点
 function _sizzle(selector, context) {
 
     var temp = [], flag;
     if (typeof selector === 'string') {
+        if (typeof _out_sizzle === 'function') return _out_sizzle(selector, context);
         // 去掉回车，空格和换行
         selector = (selector + "").trim().replace(/[\n\f\r]/g, '');
 
@@ -428,15 +438,28 @@ clay.prototype.bind = function (eventType, callback) {
 
 };
 
-clay.prototype.unbind = function (eventType, callback) {
+clay.prototype.trigger = function (eventType) {
+    var flag, event;
 
-    var flag;
-    if (window.detachEvent)
-        for (flag = 0; flag < this.length; flag++)
-            this[flag].detachEvent("on" + eventType, callback);
-    else
-        for (flag = 0; flag < this.length; flag++)
-            this[flag].removeEventListener(eventType, callback, false);
+    //创建event的对象实例。
+    if (document.createEventObject) {
+        // IE浏览器支持fireEvent方法
+        event = document.createEventObject();
+        for (flag = 0; flag < this.length; flag++) {
+            this[flag].fireEvent('on' + eventType, event);
+        }
+    }
+
+    // 其他标准浏览器使用dispatchEvent方法
+    else {
+        event = document.createEvent('HTMLEvents');
+        // 3个参数：事件类型，是否冒泡，是否阻止浏览器的默认行为
+        event.initEvent(eventType, true, false);
+        for (flag = 0; flag < this.length; flag++) {
+            this[flag].dispatchEvent(event);
+        }
+    }
+
     return this;
 };
 
@@ -460,7 +483,7 @@ clay.prototype.position = function (event) {
 // 判断浏览器类型
 var _browser = (function () {
 
-    var userAgent = window.navigator.userAgent;
+    var userAgent = global.navigator.userAgent;
     if (userAgent.indexOf("Opera") > -1 || userAgent.indexOf("OPR") > -1) {
         return "Opera";
     }
@@ -490,7 +513,7 @@ var _IE = (function () {
     // 如果不是IE浏览器直接返回
     if (_browser != 'IE') return -1;
 
-    var userAgent = window.navigator.userAgent;
+    var userAgent = global.navigator.userAgent;
     if (userAgent.indexOf("Trident") > -1 && userAgent.indexOf("rv:11.0") > -1) return 11;
 
     if (/MSIE 10/.test(userAgent)) return 10;
@@ -505,47 +528,109 @@ var _IE = (function () {
 // 针对不支持的浏览器给出提示
 if (_IE < 9 && _browser == 'IE') throw new Error('IE browser version is too low, minimum support IE9!');
 
-// 针对IE浏览器进行加强
-if (_IE >= 9) {
-    var _innerHTML = {
+// 获取函数名称
+// 部分旧浏览器不支持
+if ('name' in Function.prototype === false) {
+    // https://www.ecma-international.org/ecma-262/6.0/#sec-setfunctionname
+    Object.defineProperty(Function.prototype, 'name', {
         get: function () {
-            var frame = document.createElement("div"), i;
-            for (i = 0; i < this.childNodes.length; i++) {
-                // 深度克隆，克隆节点以及节点下面的子内容
-                frame.appendChild(this.childNodes[i].cloneNode(true));
-            }
-            return frame.innerHTML;
-        },
-        set: function (svgstring) {
-            var frame = document.createElement("div"), i;
-            frame.innerHTML = svgstring;
-            var toSvgNode = function (htmlNode) {
-                var svgNode = document.createElementNS(_namespace.svg, (htmlNode.tagName + "").toLowerCase());
-                var attrs = htmlNode.attributes, i, svgNodeClay = clay(svgNode);
-                for (i = 0; attrs && i < attrs.length; i++) {
-                    svgNodeClay.attr(attrs[i].nodeName, htmlNode.getAttribute(attrs[i].nodeName));
-                }
-                return svgNode;
-            };
-            var rslNode = toSvgNode(frame.firstChild);
-            (function toSVG(pnode, svgPnode) {
-                var node = pnode.firstChild;
-                if (node && node.nodeType == 3) {
-                    svgPnode.textContent = pnode.innerText;
-                    return;
-                }
-                while (node) {
-                    var svgNode = toSvgNode(node);
-                    svgPnode.appendChild(svgNode);
-                    if (node.firstChild) toSVG(node, svgNode);
-                    node = node.nextSibling;
-                }
-            })(frame.firstChild, rslNode);
-            this.appendChild(rslNode);
+            return this.toString().match(/^\s*function\s*([^\(\s]*)/)[1];
         }
+    });
+}
+
+// 表示二个正的浮点数之间的最新差值
+// 你可以由此判断二个浮点数是否相对
+// （因为js浮点运算都不是准确的，不可以简单的等号判断）
+// 老火狐和IE不支持
+if (Number.EPSILON === undefined) {
+    // https://www.ecma-international.org/ecma-262/6.0/#sec-number.epsilon
+    Number.EPSILON = Math.pow(2, - 52);
+}
+
+// 判断是不是整数
+// IE浏览器不支持
+if (Number.isInteger === undefined) {
+    Number.isInteger = function (value) {
+        // https://www.ecma-international.org/ecma-262/6.0/#sec-isfinite-number
+        return typeof value === 'number' && isFinite(value) && Math.floor(value) === value;
     };
+}
+
+var _innerHTML = {
+    get: function () {
+        var frame = document.createElement("div"), i;
+        for (i = 0; i < this.childNodes.length; i++) {
+            // 深度克隆，克隆节点以及节点下面的子内容
+            frame.appendChild(this.childNodes[i].cloneNode(true));
+        }
+        return frame.innerHTML;
+    },
+    set: function (svgstring) {
+        var frame = document.createElement("div"), i;
+        frame.innerHTML = svgstring;
+        var toSvgNode = function (htmlNode) {
+            var svgNode = document.createElementNS(_namespace.svg, (htmlNode.tagName + "").toLowerCase());
+            var attrs = htmlNode.attributes, i, svgNodeClay = clay(svgNode);
+            for (i = 0; attrs && i < attrs.length; i++) {
+                svgNodeClay.attr(attrs[i].nodeName, htmlNode.getAttribute(attrs[i].nodeName));
+            }
+            return svgNode;
+        };
+        var rslNode = toSvgNode(frame.firstChild);
+        (function toSVG(pnode, svgPnode) {
+            var node = pnode.firstChild;
+            if (node && node.nodeType == 3) {
+                svgPnode.textContent = pnode.innerText;
+                return;
+            }
+            while (node) {
+                var svgNode = toSvgNode(node);
+                svgPnode.appendChild(svgNode);
+                if (node.firstChild) toSVG(node, svgNode);
+                node = node.nextSibling;
+            }
+        })(frame.firstChild, rslNode);
+        this.appendChild(rslNode);
+    }
+};
+
+// 针对部分浏览器svg上没有innerHTML进行加强
+if ('innerHTML' in SVGElement.prototype === false) {
     Object.defineProperty(SVGElement.prototype, 'innerHTML', _innerHTML);
+}
+if ('innerHTML' in SVGSVGElement.prototype === false) {
     Object.defineProperty(SVGSVGElement.prototype, 'innerHTML', _innerHTML);
+}
+
+// 兼容老IE浏览器
+// 请不要使用event.srcElement获取
+// https://dom.spec.whatwg.org/#dom-event-srcelement
+if ('target' in Event.prototype === false) {
+    Object.defineProperty(Event.prototype, 'target', {
+        get: function () {
+            return this.srcElement;
+        }
+    });
+}
+
+// 取消冒泡事件
+// 防止对事件流中当前节点的后续节点中的所有事件侦听器进行处理
+// 此方法不会影响当前节点中的任何事件侦听器
+// 如果需要取消包括本结点的方法，应该使用stopImmediatePropagation()
+// https://dom.spec.whatwg.org/#dom-event-stopimmediatepropagation
+if ('stopPropagation' in Event.prototype === false) {
+    Event.prototype.stopPropagation = function () {
+        this.cancelBubble = true;
+    };
+}
+
+// 阻止默认事件
+// https://dom.spec.whatwg.org/#dom-event-preventdefault
+if ('preventDefault' in Event.prototype === false) {
+    Event.prototype.preventDefault = function () {
+        this.returnValue = false;
+    };
 }
 
 var _clock = {
@@ -660,7 +745,49 @@ clay.loop = function (datas, callback) {
     return clay;
 };
 
+var _ajaxConfig = {
+    "headers": {},
+    "timeout": 3000,
+    "context": "",
+    "request": function (config) {
+        return config;
+    },
+    "success": function (data, doback) {
+        if (typeof doback == 'function') {
+            doback(data);
+        }
+    },
+    "error": function (error, doback) {
+        if (typeof doback == 'function') {
+            doback(error);
+        }
+    }
+};
+_provider.$httpProvider = function (config) {
+    var row;
+    for (row in config) {
+        _ajaxConfig[row] = config[row];
+    }
+};
+
+/**
+ * XMLHttpRequest
+ *
+ * config={
+ * "type":"POST"|"GET",
+ * "url":地址,
+ * "success":成功回调(非必须),
+ * "error":错误回调(非必须),
+ * "fileload":文件传输进度回调(非必须),
+ * "timeout":超时时间,
+ * "header":{
+ *          //请求头
+ *      },
+ * "data":post时带的数据（非必须）
+ * }
+ */
 var _ajax = function (config) {
+    config = _ajaxConfig.request(config);
     var i;
 
     // 获取xhr对象
@@ -671,10 +798,11 @@ var _ajax = function (config) {
         new ActiveXObject("Microsoft.XMLHTTP");
 
     // 打开请求地址
+    if (!/^\//.test(config.url)) config.url = _ajaxConfig.context + "" + config.url;
     xhr.open(config.type, config.url, true);
 
     // 设置超时时间
-    xhr.timeout = config.timeout;
+    xhr.timeout = config.timeout || _ajaxConfig.timeout;
 
     // 文件传递进度回调
     if (typeof config.fileload == 'function') {
@@ -687,29 +815,31 @@ var _ajax = function (config) {
     }
 
     // 请求成功回调
-    if (typeof config.success == 'function') {
-        xhr.onload = function () {
-            config.success({
-                "response": xhr.response,
-                "status": xhr.status,
-                "header": xhr.getAllResponseHeaders()
-            });
-        };
-    }
+    xhr.onload = function () {
+        _ajaxConfig.success({
+            "response": xhr.response,
+            "status": xhr.status,
+            "header": xhr.getAllResponseHeaders()
+        }, config.success);
+    };
 
     // 错误回调
-    if (typeof config.error == 'function') {
-        // 请求中出错回调
-        xhr.onerror = function () {
-            config.error({ "type": "error" });
-        };
-        // 请求超时回调
-        xhr.ontimeout = function () {
-            config.error({ "type": "timeout" });
-        };
-    }
+    // 请求中出错回调
+    xhr.onerror = function () {
+        _ajaxConfig.error({
+            "type": "error"
+        }, config.error);
+    };
+    // 请求超时回调
+    xhr.ontimeout = function () {
+        _ajaxConfig.error({
+            "type": "timeout"
+        }, config.error);
+    };
 
     // 配置请求头
+    for (i in _ajaxConfig.headers)
+        xhr.setRequestHeader(i, _ajaxConfig.headers[i]);
     for (i in config.header)
         xhr.setRequestHeader(i, config.header[i]);
 
@@ -725,7 +855,7 @@ clay.post = function (header, timeout) {
             "url": url,
             "success": callback,
             "error": errorback,
-            "timeout": timeout || 300,
+            "timeout": timeout,
             "header": header || {},
             "data": param ? JSON.stringify(param) : ""
         });
@@ -742,7 +872,7 @@ clay.get = function (header, timeout) {
             "url": url,
             "success": callback,
             "error": errorback,
-            "timeout": timeout || 300,
+            "timeout": timeout,
             "header": header || {}
         });
         return get;
@@ -1366,12 +1496,15 @@ var _arc = function (painter) {
 
     var scope = {
         c: [0, 0],
-        r: [100, 140]
+        r: [100, 140],
+        t: []
     };
 
     // r1和r2，内半径和外半径
     // beginA起点弧度，rotateA旋转弧度式
     var arc = function (beginA, rotateA, r1, r2) {
+        if (rotateA > Math.PI * 2) rotateA = Math.PI * 2;
+        if (rotateA < -Math.PI * 2) rotateA = -Math.PI * 2;
 
         // 保证逆时针也是可以的
         if (rotateA < 0) {
@@ -1407,7 +1540,8 @@ var _arc = function (painter) {
             temp[0] + scope.c[0], temp[1] + scope.c[1],
             temp[4] + scope.c[0], temp[5] + scope.c[1],
             temp[2] + scope.c[0], temp[3] + scope.c[1],
-            temp[6] + scope.c[0], temp[7] + scope.c[1]
+            temp[6] + scope.c[0], temp[7] + scope.c[1],
+            scope.t, (r2 - r1) * 0.5
         );
     };
 
@@ -1420,6 +1554,12 @@ var _arc = function (painter) {
     // 设置弧中心
     arc.setCenter = function (x, y) {
         scope.c = [x, y];
+        return arc;
+    };
+
+    // 设置起点和终点样式
+    arc.lineCap = function (beginCircle, endCircle) {
+        scope.t = [beginCircle, endCircle];
         return arc;
     };
 
@@ -1437,16 +1577,26 @@ clay.svg.arc = function () {
             begInnerX, begInnerY,
             begOuterX, begOuterY,
             endInnerX, endInnerY,
-            endOuterX, endOuterY
+            endOuterX, endOuterY,
+            t, r
         ) {
             var f = (endA - beginA) > Math.PI ? 1 : 0,
                 d = "M" + begInnerX + " " + begInnerY;
+            if (r < 0) r = -r;
             d +=
                 // 横半径 竖半径 x轴偏移角度 0小弧/1大弧 0逆时针/1顺时针 终点x 终点y
                 "A" + rmin + " " + rmin + " 0 " + f + " 1 " + endInnerX + " " + endInnerY;
-            d += "L" + endOuterX + " " + endOuterY;
+            // 结尾
+            if (!t[1])
+                d += "L" + endOuterX + " " + endOuterY;
+            else
+                d += "A" + r + " " + r + " " + " 0 1 0 " + endOuterX + " " + endOuterY;
             d += "A" + rmax + " " + rmax + " 0 " + f + " 0 " + begOuterX + " " + begOuterY;
-            d += "L" + begInnerX + " " + begInnerY;
+            // 开头
+            if (!t[0])
+                d += "L" + begInnerX + " " + begInnerY;
+            else
+                d += "A" + r + " " + r + " " + " 0 1 0 " + begInnerX + " " + begInnerY;
             return d;
         }
     );
@@ -1467,16 +1617,26 @@ clay.canvas.arc = function (selector, config) {
                 begInnerX, begInnerY,
                 begOuterX, begOuterY,
                 endInnerX, endInnerY,
-                endOuterX, endOuterY
+                endOuterX, endOuterY,
+                t, r
             ) {
+                if (r < 0) r = -r;
                 obj._p.beginPath();
                 obj._p.moveTo(begInnerX, begInnerY);
                 obj._p.arc(
                     // (圆心x，圆心y，半径，开始角度，结束角度，true逆时针/false顺时针)
                     cx, cy, rmin, beginA, endA, false);
-                obj._p.lineTo(endOuterX, endOuterY);
+                // 结尾
+                if (!t[1])
+                    obj._p.lineTo(endOuterX, endOuterY);
+                else
+                    obj._p.arc((endInnerX + endOuterX) * 0.5, (endInnerY + endOuterY) * 0.5, r, endA - Math.PI, endA, true);
                 obj._p.arc(cx, cy, rmax, endA, beginA, true);
-                obj._p.lineTo(begInnerX, begInnerY);
+                // 开头
+                if (!t[0])
+                    obj._p.lineTo(begInnerX, begInnerY);
+                else
+                    obj._p.arc((begInnerX + begOuterX) * 0.5, (begInnerY + begOuterY) * 0.5, r, beginA, beginA - Math.PI, true);
                 return obj._p;
 
             });
@@ -1892,12 +2052,16 @@ var _polygon = function (painter) {
          * 设置d可以设置精度，d越大，精度越高，但是相应的计算量也会增加（计算时间增加）
          */
         d: 100
-    },
-        // 多边形插值方法
-        catmullRom = clay.catmullRom();
+    };
+    // 多边形插值方法
+    if (!scope.i) var catmullRom = clay.catmullRom();
 
     var polygon = function (point) {
-        var p = point.slice();
+        // 原来的slice写法会阻止某些JavaScript引擎中的优化
+        // https://github.com/petkaantonov/bluebird/wiki/Optimization-killers#3-managing-arguments
+        // 替换使用apply方法实现
+        // https://www.ecma-international.org/ecma-262/6.0/#sec-function.prototype.apply
+        var p = (point.length === 1 ? [point[0]] : Array.apply(null, point));
         p.push(p[0]);
 
         var l = p.length;
@@ -1908,9 +2072,12 @@ var _polygon = function (painter) {
         var i = 1,
             temp = "M" + p[1][0] + " " + p[1][1] + " ";
         for (; i < l; i++) {
-            var points = p.slice(i - 1, i + 3);
-            catmullRom.setP(points[0], points[1], points[2], points[3]);
-            temp = painter(catmullRom, 0, 1 / scope.d, temp);
+            if (!scope.i) {
+                catmullRom.setP(p[i - 1], p[i], p[i + 1], p[i + 2]);
+                temp = painter(catmullRom, 0, 1 / scope.d, temp);
+            } else {
+                temp = painter([p[i], p[i + 1]], 0, 1 / scope.d, temp);
+            }
         }
         // 闭合
         if (typeof temp == 'string') temp += " Z"; else temp.closePath();
@@ -1918,8 +2085,14 @@ var _polygon = function (painter) {
     };
 
     polygon.setNum = function (num) {
-        //设置进度（即将p1,p2两点间的曲线段分成的段数）
+        //设置精度（即将p1,p2两点间的曲线段分成的段数）
         scope.d = num;
+        return polygon;
+    };
+
+    // 设置是否需要插值
+    polygon.noInterpolate = function (noInterpolate) {
+        scope.i = noInterpolate;
         return polygon;
     };
 
@@ -1933,9 +2106,13 @@ clay.svg.polygon = function () {
         function (
             calcFn, start, dx, temp
         ) {
-            for (; start <= 1; start += dx) {
-                var point = calcFn(start);
-                temp = temp + " L" + point[0] + "," + point[1];
+            if (typeof calcFn !== 'function') {
+                temp = temp + " L" + calcFn[1][0] + "," + calcFn[1][1];
+            } else {
+                for (; start <= 1; start += dx) {
+                    var point = calcFn(start);
+                    temp = temp + " L" + point[0] + "," + point[1];
+                }
             }
             return temp;
         }
@@ -1950,14 +2127,21 @@ clay.canvas.polygon = function (selector, config) {
             _canvas(selector, config, _polygon, function (
                 calcFn, start, dx, temp
             ) {
-
-                var point = calcFn(start);
-                if (typeof temp == 'string') {
-                    obj._p.moveTo(point[0], point[1]);
-                }
-                for (; start <= 1; start += dx) {
-                    point = calcFn(start);
-                    obj._p.lineTo(point[0], point[1]);
+                if (typeof calcFn !== 'function') {
+                    if (typeof temp == 'string') {
+                        obj._p.beginPath();
+                        obj._p.moveTo(calcFn[0][0], calcFn[0][1]);
+                    }
+                    obj._p.lineTo(calcFn[1][0], calcFn[1][1]);
+                } else {
+                    var point = calcFn(start);
+                    if (typeof temp == 'string') {
+                        obj._p.moveTo(point[0], point[1]);
+                    }
+                    for (; start <= 1; start += dx) {
+                        point = calcFn(start);
+                        obj._p.lineTo(point[0], point[1]);
+                    }
                 }
                 return obj._p;
             });
@@ -2316,9 +2500,17 @@ clay.pieLayout = function () {
     return pie;
 };
 
-// 自定义组件常用方法
-var _this = {
+// 可注入内部服务
+var _service = {
+    "$browser": {
+        "type": _browser,
+        "version": _IE
+    }
+};
 
+// 常用方法
+var _this = {
+    "toNode": _toNode
 };
 
 /**
@@ -2373,26 +2565,26 @@ clay.component = function (name, content) {
     var param = [], i;
     if (content.constructor != Array) content = [content];
     for (i = 0; i < content.length - 1; i++) {
-        param[i] = {
-            "$browser": {
-                "type": _browser,
-                "IE": _IE
-            }
-        }[content[i]] || undefined;
+        param[i] = _service[content[i]] || undefined;
     }
     _component[name] = content[content.length - 1].apply(this, param);
     return clay;
 };
 
-clay.config = function () {
-
+clay.config = function ($provider, content) {
+    var param = [], i;
+    if (content.constructor != Array) content = [content];
+    for (i = 0; i < content.length - 1; i++) {
+        param[i] = _service[content[i]] || undefined;
+    }
+    var config = content[content.length - 1].apply(this, param);
+    _provider[$provider](config);
+    return clay;
 };
 
-    clay.version = '1.4.0';
+    clay.version = '1.5.2next';
     clay.author = '心叶';
     clay.email = 'yelloxing@gmail.com';
-
-    global.clay = global.$$ = clay;
 
     return clay;
 
