@@ -62,6 +62,21 @@ var source = [
     './src/graphics/polygon.js',
 
     /**
+     * 3D图形
+     */
+    './src/webgl/shader.js',
+    './src/webgl/buffer.js',
+    './src/webgl/texture.js',
+    './src/webgl/index.js',
+
+    /**
+     * 三维世界
+     */
+    './src/Matrix4/3d/carmera.js',
+    './src/Matrix4/3d/projection.js',
+    './src/Matrix4/3d/light.js',
+
+    /**
      * 布局
      */
     './src/layout/tree.js',
@@ -77,7 +92,7 @@ var source = [
 ];
 
 var banner = '/*!\n' +
-    '* <%= pkg.name %> - <%= pkg.description %>\n' +
+    '* clay.js - <%= pkg.description %>\n' +
     '* <%= pkg.repository.url %>\n' +
     '* \n' +
     '* author <%= pkg.author %>\n' +
@@ -142,7 +157,6 @@ module.exports = function (grunt) {
                     "XMLHttpRequest": true,
                     "SVGSVGElement": true,
                     "ActiveXObject": true,
-                    "<%= pkg.name %>": true,
                     "Event": true,
                     "define": true,
                     "exports": true
@@ -203,7 +217,7 @@ module.exports = function (grunt) {
     grunt.loadNpmTasks('grunt-contrib-qunit');
     grunt.loadNpmTasks('grunt-contrib-connect');
 
-    // <%= pkg.name %>特殊的任务
+    //特殊的任务
     grunt.loadTasks("build/tasks");
 
     /*注册任务*/
